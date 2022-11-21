@@ -32,30 +32,41 @@ class entradas extends Controller
         /* El validate funciona, pero los datos que se estan enviando no cumplen    */
         $request->validate([
             'cod_articulo' => 'required|max:10',
-            'tipo' => 'required|max:30',
+            'tipo' => 'max:30',
             'cantidad' => 'required|max:20',
-
-
+            'causal' => 'required|max:50',
             'num_factura' => 'max:50',
         ]);
 
+
+        if ($request->causal == "Factura de compra - Materia prima o insumos" && $request->num_factura == "Seleccione una factura") {
+            return redirect()->route('post_reg_entrada')->with('error', 'Debe seleccionar un numero de factura');
+        } elseif ($request->causal == "Factura de compra - Materia prima o insumos" && is_null($request->num_factura)) {
+            return redirect()->route('post_reg_entrada')->with('error', 'Debe seleccionar un numero de factura');
+        }
+
+        if ($request->num_factura == "Seleccione una factura") {
+            return redirect()->route('post_reg_entrada')->with('error', 'Dejo algún campo sin seleccionar');
+        }
+
         $entradas = new tbl_registros();
         $entradas->cod_articulo = $request->cod_articulo;
-        $entradas->tipo = "entrada";
+        $entradas->tipo = "Entrada";
         $entradas->cantidad = $request->cantidad;
         $entradas->causal = $request->causal;
         $entradas->num_factura = $request->num_factura;
-        if ($entradas->save()):
-            $this->updateOrInsertInventory($request->cod_articulo,$request->cantidad);
-            return redirect()->route('post_reg_entrada')->with('guardado', 'Tarea creada correctamente');
+        if ($entradas->save()) :
+            $this->updateOrInsertInventory($request->cod_articulo, $request->cantidad);
+            return redirect()->route('post_reg_entrada')->with('guardado', 'El registro de entrada se realizo con exito');
         endif;
-        
     }
 
     public function index()
     {
 
-        $entradas = tbl_registros::all();
+        $entradas = tbl_registros::leftJoin('tbl_articulos as a', 'tbl_registros.cod_articulo', '=', 'a.cod_articulo')
+            ->select('tbl_registros.*', 'descripcion_articulo')
+            ->where('tipo', '=', 'Entrada')->get();
         return view('entradas.entradas', compact('entradas'));
     }
 
@@ -71,23 +82,23 @@ class entradas extends Controller
         $bool = DB::table('tbl_inventarios')
             ->where('cod_articulo', $id)->exists();
         //Si el articulo ya existe en el inventario lo actualiza
-        if ($bool):
+        if ($bool) :
             //Selecciona la cantidad actual de un articulo 
             $cantidadActual =  DB::table('tbl_inventarios')
                 ->select('existencias')
                 ->where('cod_articulo', '=', $id)->get();
             //Suma la cantidad actual del inventario con la cantidad que se está registrando en la entrada
-            $total =$cantidadActual[0]->existencias+$cantidadEntrada;
+            $total = $cantidadActual[0]->existencias + $cantidadEntrada;
             //Inserta o actualiza en la tabla de inventarios dependiendo si el codigo de articulo existe
-            DB::table('tbl_inventarios')->where('cod_articulo',$id)
-            ->update(['existencias'=>$total]);
+            DB::table('tbl_inventarios')->where('cod_articulo', $id)
+                ->update(['existencias' => $total]);
         //si no existe el registro del articulo en el inventario lo crea     
-        else:
-            $nomnbreArticulo =tbl_articulos::select('nom_articulo')
+        else :
+            $nomnbreArticulo = tbl_articulos::select('nom_articulo')
                 ->where('cod_articulo', '=', $id)->get();
             DB::table('tbl_inventarios')->upsert(
                 [
-                    ['cod_articulo' => $id,'nom_articulo'=>$nomnbreArticulo[0]->nom_articulo, 'existencias' => $cantidadEntrada],
+                    ['cod_articulo' => $id, 'nom_articulo' => $nomnbreArticulo[0]->nom_articulo, 'existencias' => $cantidadEntrada],
                 ],
                 ['cod_articulo'],
                 ['existencias']
